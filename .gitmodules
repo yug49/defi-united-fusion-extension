@@ -1,0 +1,3 @@
+[submodule "resolver_implementation/lib/openzeppelin-contracts"]
+	path = resolver_implementation/lib/openzeppelin-contracts
+	url = https://github.com/openzeppelin/openzeppelin-contracts
