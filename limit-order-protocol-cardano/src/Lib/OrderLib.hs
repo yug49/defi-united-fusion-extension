@@ -20,10 +20,11 @@ module Lib.OrderLib
 import Prelude
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
-import Crypto.Hash (Blake2b_256, hash, hashWith)
+import Crypto.Hash (Blake2b_256, hash)
 import qualified Crypto.Hash as Hash
 import Data.ByteString (ByteString)
 import Data.Maybe (fromMaybe)
+import qualified Data.ByteArray as BA
 
 import Lib.Types
 import Lib.AmountCalculator
@@ -43,9 +44,8 @@ hashOrderWithDomain order domain =
     let orderBytes = encodeOrder order
         domainHash = hash domain :: Hash.Digest Blake2b_256
         orderHash = hash orderBytes :: Hash.Digest Blake2b_256
-        combined = BS.concat [BS.pack $ Hash.digestToBytes domainHash, 
-                             BS.pack $ Hash.digestToBytes orderHash]
-    in BS.pack $ Hash.digestToBytes (hash combined :: Hash.Digest Blake2b_256)
+        combined = BS.concat [BA.convert domainHash, BA.convert orderHash]
+    in BA.convert (hash combined :: Hash.Digest Blake2b_256)
 
 -- | Encode order to bytes for hashing
 encodeOrder :: Order -> ByteString
