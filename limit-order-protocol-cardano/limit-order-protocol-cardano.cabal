@@ -136,4 +136,6 @@ test-suite limit-order-protocol-cardano-test
         base ^>=4.18.3.0,
         limit-order-protocol-cardano,
         hspec,
-        QuickCheck
+        QuickCheck,
+        bytestring,
+        containers

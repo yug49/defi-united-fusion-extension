@@ -19,6 +19,8 @@ module Contracts.LimitOrderProtocol
     , unpause
       -- * Helper functions
     , validateAndFillOrder
+      -- * Re-exports for testing
+    , module Lib.Types
     ) where
 
 import Prelude
