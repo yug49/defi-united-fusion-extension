@@ -1,0 +1,30 @@
+# Haskell compiled files
+*.hi
+*.o
+*.dyn_hi
+*.dyn_o
+*.prof
+
+# Cabal build artifacts
+dist/
+dist-newstyle/
+.cabal-sandbox/
+cabal.sandbox.config
+cabal.project.local*
+
+# Stack build artifacts  
+.stack-work/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+test_output.txt
+*.log
