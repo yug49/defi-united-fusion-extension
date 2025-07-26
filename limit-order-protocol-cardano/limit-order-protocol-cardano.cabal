@@ -71,3 +71,51 @@ executable limit-order-protocol-cardano
 
     -- Base language which the package is written in.
     default-language: Haskell2010
+
+library
+    -- Import common warning flags.
+    import:           warnings
+
+    -- Modules exported by the library.
+    exposed-modules:  Lib.AmountCalculator
+
+    -- Modules included in this library but not exported.
+    -- other-modules:
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+
+    -- Other library packages from which modules are imported.
+    build-depends:    base ^>=4.18.3.0
+
+    -- Directories containing source files.
+    hs-source-dirs:   src
+
+    -- Base language which the package is written in.
+    default-language: Haskell2010
+
+test-suite limit-order-protocol-cardano-test
+    -- Import common warning flags.
+    import:           warnings
+
+    -- Base language which the package is written in.
+    default-language: Haskell2010
+
+    -- The interface type and version of the test suite.
+    type:             exitcode-stdio-1.0
+
+    -- Directories containing source files.
+    hs-source-dirs:   test
+
+    -- The entrypoint to the test suite.
+    main-is:          Spec.hs
+
+    -- Modules included in this test suite
+    other-modules:    Lib.AmountCalculatorSpec
+
+    -- Test dependencies.
+    build-depends:
+        base ^>=4.18.3.0,
+        limit-order-protocol-cardano,
+        hspec,
+        QuickCheck
