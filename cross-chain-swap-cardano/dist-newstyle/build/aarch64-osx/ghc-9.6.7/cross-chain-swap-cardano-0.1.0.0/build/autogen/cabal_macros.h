@@ -20,6 +20,16 @@
   (major1) == 4 && (major2) <  18 || \
   (major1) == 4 && (major2) == 18 && (minor) <= 3)
 #endif /* MIN_VERSION_base */
+/* package base16-bytestring-1.0.2.0 */
+#ifndef VERSION_base16_bytestring
+#define VERSION_base16_bytestring "1.0.2.0"
+#endif /* VERSION_base16_bytestring */
+#ifndef MIN_VERSION_base16_bytestring
+#define MIN_VERSION_base16_bytestring(major1,major2,minor) (\
+  (major1) <  1 || \
+  (major1) == 1 && (major2) <  0 || \
+  (major1) == 1 && (major2) == 0 && (minor) <= 2)
+#endif /* MIN_VERSION_base16_bytestring */
 /* package bytestring-0.11.5.4 */
 #ifndef VERSION_bytestring
 #define VERSION_bytestring "0.11.5.4"

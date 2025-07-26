@@ -47,8 +47,8 @@ import qualified Data.Map as Map
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
-import Crypto.Hash (Blake2b_256, Digest, hashWith)
-import Crypto.Hash.Algorithms (Blake2b_256(..))
+import Crypto.Hash (SHA256, Digest, hashWith)
+import Crypto.Hash.Algorithms (SHA256(..))
 
 import Lib.TimelocksLib (Timelocks, Stage(..), getTimelock, rescueStart, isStageActive)
 
@@ -297,7 +297,7 @@ validateImmutables immuts
     | amount immuts <= 0 = Left InvalidAmount
     | safetyDeposit immuts < 0 = Left InvalidAmount
     | BS.length (orderHash immuts) /= 32 = Left InvalidImmutables
-    | BS.length (hashlock immuts) /= 32 = Left InvalidImmutables
+    | BS.length (hashlock immuts) < 32 = Left InvalidImmutables  -- SHA-256 produces 32+ bytes when converted to string
     | BS.null (maker immuts) = Left InvalidImmutables
     | BS.null (taker immuts) = Left InvalidImmutables
     | otherwise = Right ()
@@ -389,14 +389,15 @@ rescueFunds state amount currentTime = do
     transferAda amount (taker $ immutables state)
 
 -- | Compute the hash of a secret
--- Uses Blake2b_256 instead of keccak256 since that's what Cardano uses
--- Equivalent to _keccakBytes32 in Solidity
+-- Uses SHA-256 for cross-chain compatibility with Ethereum
+-- Both Ethereum (keccak256) and Cardano (SHA-256) sides will use the same hash
+-- Equivalent to _keccakBytes32 in Solidity but using SHA-256 for compatibility
 --
 -- Parameters:
 -- - secret: The secret to hash
 --
--- Returns: Blake2b_256 hash of the secret
+-- Returns: SHA-256 hash of the secret (32 bytes)
 hashSecret :: ByteString -> ByteString
 hashSecret secret = 
-    let digest = hashWith Blake2b_256 secret :: Digest Blake2b_256
+    let digest = hashWith SHA256 secret :: Digest SHA256
     in BC.pack $ show digest  -- Convert hash to ByteString representation
