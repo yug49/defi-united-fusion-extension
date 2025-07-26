@@ -17,7 +17,8 @@ import System.IO (putStrLn)
 -- Import our modules
 import Lib.TimelocksLib
 import Contracts.BaseEscrow
-import Contracts.EscrowSrc
+import qualified Contracts.EscrowSrc as Src
+import qualified Contracts.EscrowDst as Dst
 
 -- Test Counter
 data TestState = TestState { testsRun :: Int, testsPassed :: Int }
@@ -108,12 +109,42 @@ main = do
     
     -- Test EscrowSrc integration
     let testRegistry = ResolverRegistry "registry_owner" (Map.fromList [("resolver1", True)])
-    let srcResult = mkEscrowSrc 
+    let srcResult = Src.mkEscrowSrc 
             "12345678901234567890123456789012" "secret123" "maker_address" "taker_address" 
             1000000 100000 500 testRegistry
     
     state12 <- runTest "EscrowSrc: Integration test"
         (isRight srcResult) state11
+    
+    -- Test EscrowDst functionality
+    let testResolverRegistry = ResolverRegistry
+            { registryOwner = BC.pack "registry_owner"
+            , authorizedResolvers = Map.fromList [(BC.pack "resolver1", True)]
+            }
+    
+    let dstResult = Dst.mkEscrowDst 
+            (BC.pack "12345678901234567890123456789012")  -- 32-byte order hash
+            (BC.pack "testsecret")                        -- Test secret
+            (BC.pack "maker_address")                     -- Maker
+            (BC.pack "taker_address")                     -- Taker
+            1000                                          -- Amount
+            100                                           -- Safety deposit
+            86400                                         -- Rescue delay
+            testResolverRegistry                          -- Resolver registry
+    
+    state13 <- runTest "EscrowDst: Creation works"
+        (isRight dstResult) state12
+    
+    -- Test EscrowDst withdrawal functionality
+    finalState <- case dstResult of
+        Right dstState -> do
+            let withdrawResult = Dst.withdraw dstState 
+                    (BC.pack "testsecret") 
+                    (BC.pack "maker_address") 
+                    1300  -- During destination withdrawal window
+            runTest "EscrowDst: Withdrawal works"
+                (isRight withdrawResult) state13
+        Left _ -> return state13
     
     -- Final results
     putStrLn ""
@@ -121,8 +152,8 @@ main = do
     putStrLn "📊 RESULTS"
     putStrLn "=========================="
     
-    let finalTestsRun = testsRun state12
-    let finalTestsPassed = testsPassed state12
+    let finalTestsRun = testsRun finalState
+    let finalTestsPassed = testsPassed finalState
     
     putStrLn $ "Tests: " ++ show finalTestsPassed ++ "/" ++ show finalTestsRun
     
@@ -135,6 +166,7 @@ main = do
             putStrLn "✅ Cross-chain: Hash functions ready"
             putStrLn "✅ Inheritance: Functions prepared"
             putStrLn "✅ EscrowSrc: Integration successful"
+            putStrLn "✅ EscrowDst: Integration successful"
             putStrLn ""
             putStrLn "🚀 EVERYTHING IS READY FOR NEXT PHASE!"
         else do
