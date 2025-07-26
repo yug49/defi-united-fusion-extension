@@ -17,6 +17,7 @@ import System.IO (putStrLn)
 -- Import our modules
 import Lib.TimelocksLib
 import Contracts.BaseEscrow
+import Contracts.EscrowSrc
 
 -- Test Counter
 data TestState = TestState { testsRun :: Int, testsPassed :: Int }
@@ -105,14 +106,23 @@ main = do
     state11 <- runTest "Inheritance: DstWithdrawTime validation"
         (isRight $ validateDstWithdrawTime 1700 testImmutables) state10
     
+    -- Test EscrowSrc integration
+    let testRegistry = ResolverRegistry "registry_owner" (Map.fromList [("resolver1", True)])
+    let srcResult = mkEscrowSrc 
+            "12345678901234567890123456789012" "secret123" "maker_address" "taker_address" 
+            1000000 100000 500 testRegistry
+    
+    state12 <- runTest "EscrowSrc: Integration test"
+        (isRight srcResult) state11
+    
     -- Final results
     putStrLn ""
     putStrLn "=========================="
     putStrLn "📊 RESULTS"
     putStrLn "=========================="
     
-    let finalTestsRun = testsRun state11
-    let finalTestsPassed = testsPassed state11
+    let finalTestsRun = testsRun state12
+    let finalTestsPassed = testsPassed state12
     
     putStrLn $ "Tests: " ++ show finalTestsPassed ++ "/" ++ show finalTestsRun
     
@@ -124,6 +134,7 @@ main = do
             putStrLn "✅ BaseEscrowCore: All validations work"
             putStrLn "✅ Cross-chain: Hash functions ready"
             putStrLn "✅ Inheritance: Functions prepared"
+            putStrLn "✅ EscrowSrc: Integration successful"
             putStrLn ""
             putStrLn "🚀 EVERYTHING IS READY FOR NEXT PHASE!"
         else do
