@@ -1,2 +1,7 @@
+import Test.Tasty
+import qualified Test.Lib.TimelocksLibSpec as TimelocksLib
+
 main :: IO ()
-main = putStrLn "Test suite not yet implemented"
+main = defaultMain $ testGroup "All Tests"
+    [ TimelocksLib.timelocksLibTests
+    ]
