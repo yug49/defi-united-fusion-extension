@@ -1,0 +1,41 @@
+packages: .
+
+-- Configuration for Plutus packages
+index-state: 2024-12-01T00:00:00Z
+
+source-repository-package
+  type: git
+  location: https://github.com/IntersectMBO/plutus
+  tag: 1.35.0.0
+  subdir:
+    plutus-core
+    plutus-ledger-api
+    plutus-tx
+    plutus-tx-plugin
+
+source-repository-package
+  type: git
+  location: https://github.com/IntersectMBO/cardano-ledger
+  tag: cardano-ledger-conway-1.17.0.0
+  subdir:
+    libs/cardano-ledger-core
+    libs/cardano-ledger-binary
+    eras/conway/impl
+
+-- Allow newer versions for compatibility
+allow-newer:
+  *:aeson,
+  *:hashable,
+  *:base
+
+-- Optimization flags
+package plutus-tx-plugin
+  documentation: False
+
+package plutus-core
+  documentation: False
+
+-- Constraints for compatibility
+constraints:
+  aeson >= 2.0,
+  hashable >= 1.3

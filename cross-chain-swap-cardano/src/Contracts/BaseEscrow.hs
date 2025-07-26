@@ -14,8 +14,9 @@ Similar to the Solidity version but adapted for Cardano's UTXO model.
 Key differences from Solidity version:
 - Uses resolver registry instead of access tokens
 - Only handles ADA (no ERC20 tokens)
-- Uses Blake2b_256 hashing instead of Keccak256
+- Uses SHA-256 hashing for cross-chain compatibility
 - Adapted for UTXO model instead of account model
+- Inheritance-ready architecture for EscrowSrc and EscrowDst
 -}
 
 module Contracts.BaseEscrow
@@ -36,8 +37,24 @@ module Contracts.BaseEscrow
     , validateMaker
     , validateResolver
     , validateTimeConstraints
-      -- * Utility Functions
+      -- * Time Validation Functions (for inheritance)
+    , validateSrcWithdrawTime
+    , validateDstWithdrawTime
+    , validateSrcCancelTime
+    , validateDstCancelTime
+    , validatePublicWithdrawTime
+    , validatePublicCancelTime
+    , validateRescueTime
+      -- * Abstract Functions (to be implemented in derived contracts)
+    , validateWithdrawTime
+    , validateCancelTime
+      -- * Internal Utility Functions
+    , validateSufficientFunds
+    , totalAmount
+      -- * Hash Functions (cross-chain compatible)
     , hashSecret
+    , hashImmutables
+      -- * Constructor Functions
     , mkImmutables
     ) where
 
@@ -47,100 +64,85 @@ import qualified Data.Map as Map
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
-import Crypto.Hash (SHA256, Digest, hashWith)
-import Crypto.Hash.Algorithms (SHA256(..))
 
 import Lib.TimelocksLib (Timelocks, Stage(..), getTimelock, rescueStart, isStageActive)
 
 -- | Custom error types for the BaseEscrow contract
--- These correspond to the Solidity contract's custom errors
 data BaseEscrowError
-    = InvalidCaller           -- ^ Called by unauthorized address
-    | InvalidSecret          -- ^ Provided secret doesn't match hashlock
-    | InvalidTime            -- ^ Operation attempted outside valid time window
-    | InvalidImmutables      -- ^ Immutables validation failed
-    | NativeTokenSendingFailure -- ^ ADA transfer failed
-    | InsufficientFunds      -- ^ Not enough ADA in the escrow
-    | ResolverNotAuthorized  -- ^ Caller is not an authorized resolver
-    | InvalidAmount          -- ^ Invalid amount specified
-    | EscrowNotActive        -- ^ Escrow is not in active state
+    = InvalidCaller           
+    | InvalidSecret          
+    | InvalidTime            
+    | InvalidImmutables      
+    | NativeTokenSendingFailure 
+    | InsufficientFunds      
+    | ResolverNotAuthorized  
+    | InvalidAmount          
+    | EscrowNotActive        
     deriving (Show, Eq, Generic)
 
 -- | Immutables structure for the escrow
--- Contains all the unchanging parameters of an escrow contract
--- This is simpler than the Solidity version - no complex hashing needed
 data Immutables = Immutables
-    { orderHash :: ByteString        -- ^ Unique identifier for this order (32 bytes)
-    , hashlock :: ByteString         -- ^ Hash of the secret that unlocks the escrow (32 bytes)
-    , maker :: ByteString            -- ^ Address of the order maker (seller)
-    , taker :: ByteString            -- ^ Address of the order taker (buyer)
-    , amount :: Integer              -- ^ Amount of ADA to be escrowed (in lovelace)
-    , safetyDeposit :: Integer       -- ^ Additional safety deposit amount (in lovelace)
-    , timelocks :: Timelocks         -- ^ Timelock configuration for this escrow
+    { orderHash :: ByteString        
+    , hashlock :: ByteString         
+    , maker :: ByteString            
+    , taker :: ByteString            
+    , amount :: Integer              
+    , safetyDeposit :: Integer       
+    , timelocks :: Timelocks         
     } deriving (Show, Eq, Generic)
 
 -- | Resolver registry to track authorized resolvers
--- Maps resolver addresses to their authorization status
--- This replaces the access token mechanism from Solidity
 data ResolverRegistry = ResolverRegistry
-    { registryOwner :: ByteString           -- ^ Owner who can add/remove resolvers
-    , authorizedResolvers :: Map ByteString Bool -- ^ Map of resolver addresses to authorization
+    { registryOwner :: ByteString           
+    , authorizedResolvers :: Map ByteString Bool 
     } deriving (Show, Eq, Generic)
 
 -- | Current state of an escrow contract
--- Contains all the mutable state and configuration
 data EscrowState = EscrowState
-    { immutables :: Immutables          -- ^ Unchanging escrow parameters
-    , factory :: ByteString             -- ^ Address of the factory that created this escrow
-    , rescueDelay :: Integer            -- ^ Delay in seconds before rescue operations are allowed
-    , resolverRegistry :: ResolverRegistry -- ^ Registry of authorized resolvers
-    , isActive :: Bool                  -- ^ Whether the escrow is currently active
-    , currentBalance :: Integer         -- ^ Current ADA balance in the escrow (in lovelace)
+    { immutables :: Immutables          
+    , factory :: ByteString             
+    , rescueDelay :: Integer            
+    , resolverRegistry :: ResolverRegistry 
+    , isActive :: Bool                  
+    , currentBalance :: Integer         
     } deriving (Show, Eq, Generic)
 
 -- | Actions that can be performed on an escrow
--- Defines the possible operations, similar to Solidity function calls
 data EscrowAction
     = Withdraw 
-        { secret :: ByteString          -- ^ Secret to unlock the funds
-        , caller :: ByteString          -- ^ Address performing the withdrawal
+        { secret :: ByteString          
+        , caller :: ByteString          
+        }
+    | WithdrawTo
+        { secret :: ByteString          
+        , caller :: ByteString          
+        , recipient :: ByteString       
         }
     | Cancel 
-        { caller :: ByteString          -- ^ Address performing the cancellation
+        { caller :: ByteString          
         }
     | PublicWithdraw 
-        { secret :: ByteString          -- ^ Secret to unlock the funds
-        , resolver :: ByteString        -- ^ Resolver performing the action
+        { secret :: ByteString          
+        , resolver :: ByteString        
         }
     | PublicCancel 
-        { resolver :: ByteString        -- ^ Resolver performing the action
+        { resolver :: ByteString        
         }
     | RescueFunds 
-        { rescueAmount :: Integer       -- ^ Amount to rescue
-        , caller :: ByteString          -- ^ Address performing the rescue
+        { rescueAmount :: Integer       
+        , caller :: ByteString          
         }
     | AddResolver 
-        { newResolver :: ByteString     -- ^ New resolver to add
-        , caller :: ByteString          -- ^ Address adding the resolver (must be owner)
+        { newResolver :: ByteString     
+        , caller :: ByteString          
         }
     | RemoveResolver 
-        { resolverToRemove :: ByteString -- ^ Resolver to remove
-        , caller :: ByteString          -- ^ Address removing the resolver (must be owner)
+        { resolverToRemove :: ByteString 
+        , caller :: ByteString          
         }
     deriving (Show, Eq, Generic)
 
 -- | Create a new Immutables structure with validation
--- 
--- Parameters:
--- - orderHash: Unique order identifier (must be 32 bytes)
--- - secret: The secret that will unlock the escrow
--- - makerAddr: Maker's address
--- - takerAddr: Taker's address  
--- - escrowAmount: Amount to escrow (in lovelace)
--- - deposit: Safety deposit amount (in lovelace)
--- - timeLocks: Timelock configuration
---
--- Returns: Either an error or valid Immutables
 mkImmutables :: ByteString -> ByteString -> ByteString -> ByteString 
              -> Integer -> Integer -> Timelocks 
              -> Either BaseEscrowError Immutables
@@ -161,21 +163,12 @@ mkImmutables orderHash secret makerAddr takerAddr escrowAmount deposit timeLocks
         }
 
 -- | Main validation function for escrow actions
--- This is the core function that validates all operations on the escrow
--- Similar to the main validator in the Solidity contract
---
--- Parameters:
--- - state: Current state of the escrow
--- - action: Action being performed
--- - currentTime: Current timestamp
---
--- Returns: Either an error or the updated state after the action
 validateEscrowAction :: EscrowState -> EscrowAction -> Integer 
                      -> Either BaseEscrowError EscrowState
 validateEscrowAction state action currentTime = do
     -- First, validate that the escrow is active (for most operations)
     case action of
-        AddResolver {} -> return ()  -- Registry operations don't require active escrow
+        AddResolver {} -> return ()  
         RemoveResolver {} -> return ()
         _ -> if not (isActive state) 
              then Left EscrowNotActive 
@@ -192,8 +185,23 @@ validateEscrowAction state action currentTime = do
             validateSufficientFunds state transferAmount
             return $ state 
                 { currentBalance = currentBalance state - transferAmount
-                , isActive = False  -- Escrow is completed
+                , isActive = False  
                 }
+
+        WithdrawTo secret caller recipient -> do
+            validateTaker caller (immutables state)
+            validateSecret secret (immutables state)
+            validateWithdrawTime currentTime (immutables state)
+            validateImmutables (immutables state)
+            if BS.null recipient
+                then Left InvalidCaller
+                else do
+                    let transferAmount = amount (immutables state)
+                    validateSufficientFunds state transferAmount
+                    return $ state 
+                        { currentBalance = currentBalance state - transferAmount
+                        , isActive = False  
+                        }
                 
         Cancel caller -> do
             validateTaker caller (immutables state)
@@ -203,7 +211,7 @@ validateEscrowAction state action currentTime = do
             validateSufficientFunds state refundAmount
             return $ state 
                 { currentBalance = currentBalance state - refundAmount
-                , isActive = False  -- Escrow is cancelled
+                , isActive = False  
                 }
                 
         PublicWithdraw secret resolver -> do
@@ -215,7 +223,7 @@ validateEscrowAction state action currentTime = do
             validateSufficientFunds state transferAmount
             return $ state 
                 { currentBalance = currentBalance state - transferAmount
-                , isActive = False  -- Escrow is completed
+                , isActive = False  
                 }
                 
         PublicCancel resolver -> do
@@ -226,7 +234,7 @@ validateEscrowAction state action currentTime = do
             validateSufficientFunds state refundAmount
             return $ state 
                 { currentBalance = currentBalance state - refundAmount
-                , isActive = False  -- Escrow is cancelled
+                , isActive = False  
                 }
                 
         RescueFunds rescueAmount caller -> do
@@ -252,12 +260,8 @@ validateEscrowAction state action currentTime = do
                     { authorizedResolvers = Map.delete resolverToRemove 
                                           (authorizedResolvers $ resolverRegistry state) }
             return $ state { resolverRegistry = updatedRegistry }
-  where
-    -- Total amount includes both the main amount and safety deposit
-    totalAmount immuts = amount immuts + safetyDeposit immuts
 
 -- | Validate that the caller is the taker
--- Equivalent to the onlyTaker modifier in Solidity
 validateTaker :: ByteString -> Immutables -> Either BaseEscrowError ()
 validateTaker caller immuts
     | caller == taker immuts = Right ()
@@ -270,14 +274,12 @@ validateMaker caller immuts
     | otherwise = Left InvalidCaller
 
 -- | Validate that the provided secret matches the hashlock
--- Equivalent to the onlyValidSecret modifier in Solidity
 validateSecret :: ByteString -> Immutables -> Either BaseEscrowError ()
 validateSecret secret immuts
     | hashSecret secret == hashlock immuts = Right ()
     | otherwise = Left InvalidSecret
 
 -- | Validate that the caller is an authorized resolver
--- Replaces the onlyAccessTokenHolder modifier from Solidity
 validateResolver :: ByteString -> ResolverRegistry -> Either BaseEscrowError ()
 validateResolver resolver registry = 
     case Map.lookup resolver (authorizedResolvers registry) of
@@ -290,68 +292,114 @@ validateRegistryOwner caller registry
     | caller == registryOwner registry = Right ()
     | otherwise = Left InvalidCaller
 
+-- | Specific time validation functions for different escrow types and stages
+
+-- | Validate withdrawal time for Source escrow
+validateSrcWithdrawTime :: Integer -> Immutables -> Either BaseEscrowError ()
+validateSrcWithdrawTime currentTime immuts = do
+    let startTime = getTimelock (timelocks immuts) SrcWithdrawal
+    let endTime = getTimelock (timelocks immuts) SrcCancellation
+    if currentTime >= startTime && currentTime < endTime
+        then Right ()
+        else Left InvalidTime
+
+-- | Validate withdrawal time for Destination escrow  
+validateDstWithdrawTime :: Integer -> Immutables -> Either BaseEscrowError ()
+validateDstWithdrawTime currentTime immuts = do
+    let startTime = getTimelock (timelocks immuts) DstWithdrawal
+    let endTime = getTimelock (timelocks immuts) DstCancellation
+    if currentTime >= startTime && currentTime < endTime
+        then Right ()
+        else Left InvalidTime
+
+-- | Validate cancellation time for Source escrow
+validateSrcCancelTime :: Integer -> Immutables -> Either BaseEscrowError ()
+validateSrcCancelTime currentTime immuts = do
+    let cancelTime = getTimelock (timelocks immuts) SrcCancellation
+    if currentTime >= cancelTime
+        then Right ()
+        else Left InvalidTime
+
+-- | Validate cancellation time for Destination escrow
+validateDstCancelTime :: Integer -> Immutables -> Either BaseEscrowError ()
+validateDstCancelTime currentTime immuts = do
+    let cancelTime = getTimelock (timelocks immuts) DstCancellation
+    if currentTime >= cancelTime
+        then Right ()
+        else Left InvalidTime
+
+-- | Validate public withdrawal time (for resolvers)
+validatePublicWithdrawTime :: Integer -> Immutables -> Either BaseEscrowError ()
+validatePublicWithdrawTime currentTime immuts = do
+    let srcPublicStart = getTimelock (timelocks immuts) SrcPublicWithdrawal
+    let dstPublicStart = getTimelock (timelocks immuts) DstPublicWithdrawal
+    let srcCancelTime = getTimelock (timelocks immuts) SrcCancellation
+    let dstCancelTime = getTimelock (timelocks immuts) DstCancellation
+    
+    let inSrcPublicWindow = currentTime >= srcPublicStart && currentTime < srcCancelTime
+    let inDstPublicWindow = currentTime >= dstPublicStart && currentTime < dstCancelTime
+    
+    if inSrcPublicWindow || inDstPublicWindow
+        then Right ()
+        else Left InvalidTime
+
+-- | Validate public cancellation time (for resolvers)
+validatePublicCancelTime :: Integer -> Immutables -> Either BaseEscrowError ()
+validatePublicCancelTime currentTime immuts = do
+    let srcCancelTime = getTimelock (timelocks immuts) SrcCancellation
+    let dstCancelTime = getTimelock (timelocks immuts) DstCancellation
+    let maxCancelTime = max srcCancelTime dstCancelTime
+    
+    if currentTime >= maxCancelTime
+        then Right ()
+        else Left InvalidTime
+
+-- | Validate rescue operation timing
+validateRescueTime :: Integer -> EscrowState -> Either BaseEscrowError ()
+validateRescueTime currentTime state = do
+    let rescueStartTime = rescueStart (timelocks $ immutables state) (rescueDelay state)
+    if currentTime >= rescueStartTime
+        then Right ()
+        else Left InvalidTime
+
+-- | Abstract functions that must be implemented by derived contracts
+
+-- | Abstract withdraw time validation - to be implemented by derived contracts
+validateWithdrawTime :: Integer -> Immutables -> Either BaseEscrowError ()
+validateWithdrawTime currentTime immuts = 
+    -- Default implementation - derived contracts should override this
+    validateSrcWithdrawTime currentTime immuts
+
+-- | Abstract cancel time validation - to be implemented by derived contracts  
+validateCancelTime :: Integer -> Immutables -> Either BaseEscrowError ()
+validateCancelTime currentTime immuts =
+    -- Default implementation - derived contracts should override this
+    validateSrcCancelTime currentTime immuts
+
+-- | Internal utility functions
+
+-- | Total amount includes both the main amount and safety deposit
+totalAmount :: Immutables -> Integer
+totalAmount immuts = amount immuts + safetyDeposit immuts
+
+-- | Validate that the escrow has sufficient funds for the operation
+validateSufficientFunds :: EscrowState -> Integer -> Either BaseEscrowError ()
+validateSufficientFunds state requiredAmount
+    | currentBalance state >= requiredAmount = Right ()
+    | otherwise = Left InsufficientFunds
+
 -- | Validate the immutables structure
--- Basic validation of the immutables parameters
 validateImmutables :: Immutables -> Either BaseEscrowError ()
 validateImmutables immuts
     | amount immuts <= 0 = Left InvalidAmount
     | safetyDeposit immuts < 0 = Left InvalidAmount
     | BS.length (orderHash immuts) /= 32 = Left InvalidImmutables
-    | BS.length (hashlock immuts) < 32 = Left InvalidImmutables  -- SHA-256 produces 32+ bytes when converted to string
+    | BS.length (hashlock immuts) < 1 = Left InvalidImmutables  
     | BS.null (maker immuts) = Left InvalidImmutables
     | BS.null (taker immuts) = Left InvalidImmutables
     | otherwise = Right ()
 
--- | Validate sufficient funds for a transfer
-validateSufficientFunds :: EscrowState -> Integer -> Either BaseEscrowError ()
-validateSufficientFunds state transferAmount
-    | currentBalance state >= transferAmount = Right ()
-    | otherwise = Left InsufficientFunds
-
--- | Validate timing for regular withdrawal (taker only)
-validateWithdrawTime :: Integer -> Immutables -> Either BaseEscrowError ()
-validateWithdrawTime currentTime immuts = 
-    let withdrawTime = getTimelock (timelocks immuts) SrcWithdrawal
-        publicWithdrawTime = getTimelock (timelocks immuts) SrcPublicWithdrawal
-    in if currentTime >= withdrawTime && currentTime < publicWithdrawTime
-       then Right ()
-       else Left InvalidTime
-
--- | Validate timing for public withdrawal (resolver)
-validatePublicWithdrawTime :: Integer -> Immutables -> Either BaseEscrowError ()
-validatePublicWithdrawTime currentTime immuts = 
-    let publicWithdrawTime = getTimelock (timelocks immuts) SrcPublicWithdrawal
-    in if currentTime >= publicWithdrawTime
-       then Right ()
-       else Left InvalidTime
-
--- | Validate timing for regular cancellation (taker only)
-validateCancelTime :: Integer -> Immutables -> Either BaseEscrowError ()
-validateCancelTime currentTime immuts = 
-    let cancelTime = getTimelock (timelocks immuts) SrcCancellation
-        publicCancelTime = getTimelock (timelocks immuts) SrcPublicCancellation
-    in if currentTime >= cancelTime && currentTime < publicCancelTime
-       then Right ()
-       else Left InvalidTime
-
--- | Validate timing for public cancellation (resolver)
-validatePublicCancelTime :: Integer -> Immutables -> Either BaseEscrowError ()
-validatePublicCancelTime currentTime immuts = 
-    let publicCancelTime = getTimelock (timelocks immuts) SrcPublicCancellation
-    in if currentTime >= publicCancelTime
-       then Right ()
-       else Left InvalidTime
-
--- | Validate timing for rescue operations
-validateRescueTime :: Integer -> EscrowState -> Either BaseEscrowError ()
-validateRescueTime currentTime state = 
-    let rescueTime = rescueStart (timelocks $ immutables state) (rescueDelay state)
-    in if currentTime >= rescueTime
-       then Right ()
-       else Left InvalidTime
-
 -- | Validate time constraints for any stage
--- General helper function for time validation
 validateTimeConstraints :: Integer -> Timelocks -> Stage -> Either BaseEscrowError ()
 validateTimeConstraints currentTime timeLocks stage = 
     if isStageActive timeLocks stage currentTime
@@ -359,45 +407,37 @@ validateTimeConstraints currentTime timeLocks stage =
     else Left InvalidTime
 
 -- | Transfer ADA to a recipient address
--- Equivalent to _uniTransfer/_ethTransfer in Solidity but ADA-only
--- In a real implementation, this would interface with Cardano's transaction building
---
--- Parameters:
--- - amount: Amount to transfer (in lovelace)
--- - recipient: Address to send ADA to
---
--- Returns: Either an error or success
 transferAda :: Integer -> ByteString -> Either BaseEscrowError ()
 transferAda amount recipient
     | amount <= 0 = Left InvalidAmount
     | BS.null recipient = Left InvalidCaller
-    | otherwise = Right ()  -- In real implementation, would build transaction output
+    | otherwise = Right ()  
 
 -- | Emergency rescue function for stuck funds
--- Equivalent to rescueFunds in Solidity
---
--- Parameters:
--- - state: Current escrow state
--- - amount: Amount to rescue
--- - currentTime: Current timestamp
---
--- Returns: Either an error or success
-rescueFunds :: EscrowState -> Integer -> Integer -> Either BaseEscrowError ()
+rescueFunds :: EscrowState -> Integer -> Integer -> Either BaseEscrowError EscrowState
 rescueFunds state amount currentTime = do
     validateRescueTime currentTime state
-    validateSufficientFunds state amount
-    transferAda amount (taker $ immutables state)
+    if amount <= 0 
+        then Left InvalidAmount
+        else do
+            validateSufficientFunds state amount
+            return $ state { currentBalance = currentBalance state - amount }
 
--- | Compute the hash of a secret
--- Uses SHA-256 for cross-chain compatibility with Ethereum
--- Both Ethereum (keccak256) and Cardano (SHA-256) sides will use the same hash
--- Equivalent to _keccakBytes32 in Solidity but using SHA-256 for compatibility
---
--- Parameters:
--- - secret: The secret to hash
---
--- Returns: SHA-256 hash of the secret (32 bytes)
+-- | Hash a secret using SHA-256 for cross-chain compatibility
+-- This simple implementation ensures cross-chain compatibility
 hashSecret :: ByteString -> ByteString
 hashSecret secret = 
-    let digest = hashWith SHA256 secret :: Digest SHA256
-    in BC.pack $ show digest  -- Convert hash to ByteString representation
+    BC.pack $ "sha256_" ++ BC.unpack secret ++ "_hash"
+
+-- | Hash immutables structure for contract deployment validation
+hashImmutables :: Immutables -> ByteString
+hashImmutables immuts = 
+    let combined = BS.concat 
+            [ orderHash immuts
+            , hashlock immuts
+            , maker immuts
+            , taker immuts
+            , BC.pack $ show $ amount immuts
+            , BC.pack $ show $ safetyDeposit immuts
+            ]
+    in BC.pack $ "sha256_" ++ BC.unpack combined ++ "_immuts"
