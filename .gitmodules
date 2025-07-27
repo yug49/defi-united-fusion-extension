@@ -5,3 +5,12 @@
 [submodule "resolver/fusion-resolver-example"]
 	path = resolver/fusion-resolver-example
 	url = https://github.com/SamkitSoni/fusion-resolver-example.git
+
+[submodule "cross-chain-swap"]
+	path = cross-chain-swap
+	url = https://github.com/1inch/cross-chain-swap.git
+
+[submodule "limit-order-protocol"]
+	path = limit-order-protocol
+	url = https://github.com/1inch/limit-order-protocol.git
+
