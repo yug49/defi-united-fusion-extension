@@ -1,3 +1,7 @@
 [submodule "resolver_implementation/lib/openzeppelin-contracts"]
 	path = resolver_implementation/lib/openzeppelin-contracts
 	url = https://github.com/openzeppelin/openzeppelin-contracts
+
+[submodule "resolver/fusion-resolver-example"]
+	path = resolver/fusion-resolver-example
+	url = https://github.com/SamkitSoni/fusion-resolver-example.git
