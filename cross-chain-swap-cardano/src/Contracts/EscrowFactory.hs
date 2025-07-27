@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE RecordWildCards #-}
 
 {-|
 Module      : Contracts.EscrowFactory
@@ -53,10 +54,11 @@ import qualified Data.Map as Map
 import Data.Time.Clock.POSIX (POSIXTime)
 
 -- Import our existing contracts
-import Contracts.BaseEscrow
+import Contracts.BaseEscrow hiding (resolverRegistry, immutables, isActive)
+import qualified Contracts.BaseEscrow as Base
 import qualified Contracts.EscrowSrc as Src
 import qualified Contracts.EscrowDst as Dst
-import Lib.TimelocksLib
+import qualified Lib.TimelocksLib as TL
 
 -- | Errors specific to factory operations
 data FactoryError
@@ -100,7 +102,7 @@ data EscrowFactoryState = EscrowFactoryState
     { factoryOwner :: ByteString           -- Factory owner address
     , rescueDelaySrc :: Integer            -- Rescue delay for source escrows
     , rescueDelayDst :: Integer            -- Rescue delay for destination escrows
-    , resolverRegistry :: ResolverRegistry -- Resolver registry for dispute resolution
+    , factoryResolverRegistry :: ResolverRegistry -- Resolver registry for dispute resolution
     , escrowRegistry :: Map.Map ByteString EscrowRecord  -- Registry of created escrows
     , statistics :: FactoryStatistics      -- Factory statistics
     , isInitialized :: Bool                -- Whether factory is properly initialized
@@ -116,7 +118,7 @@ data EscrowFactoryAction
         , taker :: ByteString              -- Taker address
         , amount :: Integer                -- Main swap amount
         , safetyDeposit :: Integer         -- Safety deposit amount
-        , timelocks :: Timelocks           -- Timing constraints
+        , timelocks :: TL.Timelocks           -- Timing constraints
         , caller :: ByteString             -- Transaction caller
         }
     | CreateDstEscrowAction
@@ -158,7 +160,7 @@ createEscrowFactory owner srcDelay dstDelay registry = do
                     { factoryOwner = owner
                     , rescueDelaySrc = srcDelay
                     , rescueDelayDst = dstDelay
-                    , resolverRegistry = registry
+                    , factoryResolverRegistry = registry
                     , escrowRegistry = Map.empty
                     , statistics = initialStats
                     , isInitialized = True
@@ -188,7 +190,7 @@ validateFactoryAction factory action currentTime = do
 
 -- | Create a source escrow contract
 createSrcEscrow :: EscrowFactoryState -> ByteString -> ByteString -> ByteString 
-                -> ByteString -> Integer -> Integer -> Timelocks -> ByteString 
+                -> ByteString -> Integer -> Integer -> TL.Timelocks -> ByteString 
                 -> Integer -> Either FactoryError (EscrowFactoryState, ByteString)
 createSrcEscrow factory orderHash secret maker taker amount safetyDeposit 
                timelocks caller currentTime = do
@@ -197,9 +199,9 @@ createSrcEscrow factory orderHash secret maker taker amount safetyDeposit
         then Left (InvalidCreationTime)
         else do
             -- Create immutables
-            let hashlock = hashSecret secret
-            let deployedTimelocks = setDeployedAt timelocks currentTime
-            let immuts = Immutables
+            let hashlock = Base.hashSecret secret
+            let deployedTimelocks = TL.setDeployedAt timelocks currentTime
+            let factoryImmuts = Immutables
                     { orderHash = orderHash
                     , hashlock = hashlock
                     , maker = maker
@@ -210,11 +212,11 @@ createSrcEscrow factory orderHash secret maker taker amount safetyDeposit
                     }
             
             -- Validate immutables
-            case validateImmutables immuts of
+            case Base.validateImmutables factoryImmuts of
                 Left _ -> Left InvalidCreationTime
                 Right _ -> do
                     -- Compute deterministic address
-                    let escrowAddress = computeEscrowSrcAddress factory immuts
+                    let escrowAddress = computeEscrowSrcAddress factory factoryImmuts
                     
                     -- Check if escrow already exists
                     if Map.member escrowAddress (escrowRegistry factory)
@@ -223,7 +225,7 @@ createSrcEscrow factory orderHash secret maker taker amount safetyDeposit
                             -- Create escrow state
                             srcResult <- case Src.mkEscrowSrc orderHash secret maker taker 
                                              amount safetyDeposit (rescueDelaySrc factory) 
-                                             (resolverRegistry factory) of
+                                             (factoryResolverRegistry factory) of
                                 Left _ -> Left InvalidCreationTime
                                 Right _ -> Right ()
                             
@@ -232,7 +234,7 @@ createSrcEscrow factory orderHash secret maker taker amount safetyDeposit
                             let escrowRecord = EscrowRecord
                                     { escrowAddress = escrowAddress
                                     , escrowType = SourceEscrow
-                                    , immutables = immuts
+                                    , immutables = factoryImmuts
                                     , createdAt = currentTime
                                     , creator = caller
                                     , isActive = True
@@ -263,35 +265,35 @@ createDstEscrow :: EscrowFactoryState -> Immutables -> Integer -> Integer
 createDstEscrow factory dstImmutables srcCancellationTimestamp providedBalance 
                caller currentTime = do
     -- Set deployment time for timelocks
-    let deployedTimelocks = setDeployedAt (timelocks dstImmutables) currentTime
-    let immuts = dstImmutables { timelocks = deployedTimelocks }
+    let deployedTimelocks = TL.setDeployedAt (Base.timelocks dstImmutables) currentTime
+    let factoryImmuts = dstImmutables { Base.timelocks = deployedTimelocks }
     
     -- Validate that destination cancellation doesn't happen after source cancellation
-    let dstCancelTime = getTimelock (timelocks immuts) DstCancellation
+    let dstCancelTime = TL.getTimelock (Base.timelocks factoryImmuts) TL.DstCancellation
     if dstCancelTime > srcCancellationTimestamp
         then Left InvalidSrcCancellationTime
         else do
             -- Validate immutables
-            case validateImmutables immuts of
+            case Base.validateImmutables factoryImmuts of
                 Left _ -> Left InvalidCreationTime
                 Right _ -> do
                     -- Compute deterministic address
-                    let escrowAddress = computeEscrowDstAddress factory immuts
+                    let escrowAddress = computeEscrowDstAddress factory factoryImmuts
                     
                     -- Check if escrow already exists
                     if Map.member escrowAddress (escrowRegistry factory)
                         then Left EscrowAlreadyExists
                         else do
                             -- Validate provided balance
-                            let requiredBalance = amount immuts + safetyDeposit immuts
+                            let requiredBalance = Base.amount factoryImmuts + Base.safetyDeposit factoryImmuts
                             if providedBalance < requiredBalance
                                 then Left InsufficientEscrowBalance
                                 else do
                                     -- Create escrow state
-                                    dstResult <- case Dst.mkEscrowDst (orderHash immuts) (BC.pack "temp_secret") 
-                                                     (maker immuts) (taker immuts) (amount immuts) 
-                                                     (safetyDeposit immuts) (rescueDelayDst factory) 
-                                                     (resolverRegistry factory) of
+                                    dstResult <- case Dst.mkEscrowDst (Base.orderHash factoryImmuts) (BC.pack "temp_secret") 
+                                                     (Base.maker factoryImmuts) (Base.taker factoryImmuts) (Base.amount factoryImmuts) 
+                                                     (Base.safetyDeposit factoryImmuts) (rescueDelayDst factory) 
+                                                     (factoryResolverRegistry factory) of
                                         Left _ -> Left InvalidCreationTime
                                         Right _ -> Right ()
                                     
@@ -299,7 +301,7 @@ createDstEscrow factory dstImmutables srcCancellationTimestamp providedBalance
                                     let escrowRecord = EscrowRecord
                                             { escrowAddress = escrowAddress
                                             , escrowType = DestinationEscrow
-                                            , immutables = immuts
+                                            , immutables = factoryImmuts
                                             , createdAt = currentTime
                                             , creator = caller
                                             , isActive = True
@@ -327,7 +329,7 @@ createDstEscrow factory dstImmutables srcCancellationTimestamp providedBalance
 computeEscrowSrcAddress :: EscrowFactoryState -> Immutables -> ByteString
 computeEscrowSrcAddress factory immuts =
     let factorySalt = BC.pack $ "factory_" ++ show (currentNonce factory)
-        immutablesHash = hashImmutables immuts
+        immutablesHash = Base.hashImmutables immuts
         combinedHash = BC.pack $ BC.unpack factorySalt ++ BC.unpack immutablesHash ++ "_src"
     in BC.pack $ "src_escrow_" ++ take 32 (BC.unpack combinedHash ++ repeat '0')
 
@@ -335,7 +337,7 @@ computeEscrowSrcAddress factory immuts =
 computeEscrowDstAddress :: EscrowFactoryState -> Immutables -> ByteString
 computeEscrowDstAddress factory immuts =
     let factorySalt = BC.pack $ "factory_" ++ show (currentNonce factory)
-        immutablesHash = hashImmutables immuts
+        immutablesHash = Base.hashImmutables immuts
         combinedHash = BC.pack $ BC.unpack factorySalt ++ BC.unpack immutablesHash ++ "_dst"
     in BC.pack $ "dst_escrow_" ++ take 32 (BC.unpack combinedHash ++ repeat '0')
 
@@ -374,7 +376,7 @@ updateResolverRegistry factory newRegistry caller = do
     if caller /= factoryOwner factory
         then Left UnauthorizedFactoryAccess
         else do
-            let updatedFactory = factory { resolverRegistry = newRegistry }
+            let updatedFactory = factory { factoryResolverRegistry = newRegistry }
             return (updatedFactory, BC.pack "registry_updated")
 
 -- | Constructor helper function
@@ -401,7 +403,3 @@ displayEscrowFactory factory = unlines
     , "    Destination Escrows: " ++ show (dstEscrowsCreated (statistics factory))
     , "  📋 Registry: " ++ show (Map.size (escrowRegistry factory)) ++ " escrows registered"
     ]
-
--- | Set deployment time for timelocks (helper function)
-setDeployedAt :: Timelocks -> Integer -> Timelocks
-setDeployedAt timelocks timestamp = timelocks { deployedAt = timestamp }
