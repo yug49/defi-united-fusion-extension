@@ -29,15 +29,15 @@ runTest testName result state = do
     let newTestsRun = testsRun state + 1
     if result
         then do
-            putStrLn $ "✅ " ++ testName
+            putStrLn $ "PASS " ++ testName
             return $ TestState newTestsRun (testsPassed state + 1)
         else do
-            putStrLn $ "❌ " ++ testName
+            putStrLn $ "FAIL " ++ testName
             return $ TestState newTestsRun (testsPassed state)
 
 main :: IO ()
 main = do
-    putStrLn "🚀 ESCROWSRC FUNCTIONALITY TEST"
+    putStrLn "ESCROWSRC FUNCTIONALITY TEST"
     putStrLn "=============================="
     putStrLn ""
     
@@ -143,7 +143,7 @@ main = do
             -- Final results
             putStrLn ""
             putStrLn "=============================="
-            putStrLn "📊 ESCROWSRC TEST RESULTS"
+            putStrLn "ESCROWSRC TEST RESULTS"
             putStrLn "=============================="
             
             let finalTestsRun = testsRun state18
@@ -154,16 +154,16 @@ main = do
             if finalTestsPassed == finalTestsRun
                 then do
                     putStrLn ""
-                    putStrLn "🎉 ESCROWSRC WORKING PERFECTLY!"
-                    putStrLn "✅ State creation and initialization"
-                    putStrLn "✅ Source-specific timing validation"
-                    putStrLn "✅ Secret and caller validation"
-                    putStrLn "✅ Withdraw and WithdrawTo functionality"
-                    putStrLn "✅ Cancellation mechanisms"
-                    putStrLn "✅ Public operations via resolvers"
-                    putStrLn "✅ State management and updates"
+                    putStrLn "ESCROWSRC WORKING PERFECTLY!"
+                    putStrLn "PASS State creation and initialization"
+                    putStrLn "PASS Source-specific timing validation"
+                    putStrLn "PASS Secret and caller validation"
+                    putStrLn "PASS Withdraw and WithdrawTo functionality"
+                    putStrLn "PASS Cancellation mechanisms"
+                    putStrLn "PASS Public operations via resolvers"
+                    putStrLn "PASS State management and updates"
                     putStrLn ""
-                    putStrLn "🚀 ESCROWSRC READY FOR PRODUCTION!"
+                    putStrLn "ESCROWSRC READY FOR PRODUCTION!"
                 else do
                     putStrLn "❌ Some tests failed - check implementation"
             

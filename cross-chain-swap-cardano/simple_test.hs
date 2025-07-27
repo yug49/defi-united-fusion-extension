@@ -30,15 +30,15 @@ runTest testName result state = do
     let newTestsRun = testsRun state + 1
     if result
         then do
-            putStrLn $ "✅ " ++ testName
+            putStrLn $ "PASS " ++ testName
             return $ TestState newTestsRun (testsPassed state + 1)
         else do
-            putStrLn $ "❌ " ++ testName
+            putStrLn $ "FAIL " ++ testName
             return $ TestState newTestsRun (testsPassed state)
 
 main :: IO ()
 main = do
-    putStrLn "🚀 SIMPLE VERIFICATION TEST"
+    putStrLn "SIMPLE VERIFICATION TEST"
     putStrLn "=========================="
     putStrLn ""
     
@@ -149,7 +149,7 @@ main = do
     -- Final results
     putStrLn ""
     putStrLn "=========================="
-    putStrLn "📊 RESULTS"
+    putStrLn "RESULTS"
     putStrLn "=========================="
     
     let finalTestsRun = testsRun finalState
@@ -160,16 +160,16 @@ main = do
     if finalTestsPassed == finalTestsRun
         then do
             putStrLn ""
-            putStrLn "🎉 ALL TESTS PASSED PERFECTLY!"
-            putStrLn "✅ TimelocksLib: Working perfectly"
-            putStrLn "✅ BaseEscrowCore: All validations work"
-            putStrLn "✅ Cross-chain: Hash functions ready"
-            putStrLn "✅ Inheritance: Functions prepared"
-            putStrLn "✅ EscrowSrc: Integration successful"
-            putStrLn "✅ EscrowDst: Integration successful"
+            putStrLn "ALL TESTS PASSED PERFECTLY!"
+            putStrLn "PASS TimelocksLib: Working perfectly"
+            putStrLn "PASS BaseEscrowCore: All validations work"
+            putStrLn "PASS Cross-chain: Hash functions ready"
+            putStrLn "PASS Inheritance: Functions prepared"
+            putStrLn "PASS EscrowSrc: Integration successful"
+            putStrLn "PASS EscrowDst: Integration successful"
             putStrLn ""
-            putStrLn "🚀 EVERYTHING IS READY FOR NEXT PHASE!"
+            putStrLn "EVERYTHING IS READY FOR NEXT PHASE!"
         else do
-            putStrLn "❌ Some tests failed"
+            putStrLn "FAIL Some tests failed"
     
     putStrLn "=========================="
