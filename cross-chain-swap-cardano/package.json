@@ -8,7 +8,18 @@
     "build": "cabal build",
     "clean": "cabal clean",
     "deploy": "node scripts/deploy.js",
-    "build-and-deploy": "./scripts/build-and-deploy.sh"
+    "build-and-deploy": "./scripts/build-and-deploy.sh",
+    "demo": "node txn_examples/demo-full-swap.js",
+    "demo:full": "node txn_examples/demo-full-swap.js full",
+    "demo:deploy": "node txn_examples/demo-full-swap.js deploy-only",
+    "demo:withdraw": "node txn_examples/demo-full-swap.js withdraw-only",
+    "demo:cancel": "node txn_examples/demo-full-swap.js cancel-demo",
+    "deploy:src": "node txn_examples/deploy-escrow-src.js",
+    "deploy:dst": "node txn_examples/deploy-escrow-dst.js",
+    "withdraw:src": "node txn_examples/withdraw-src.js",
+    "withdraw:dst": "node txn_examples/withdraw-dst.js",
+    "cancel:src": "node txn_examples/cancel-src.js",
+    "cancel:dst": "node txn_examples/cancel-dst.js"
   },
   "keywords": [
     "cardano",
