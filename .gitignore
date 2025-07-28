@@ -98,6 +98,15 @@ temp/
 keystore/
 wallet.json
 
+# Cardano specific
+bin/
+*.tar.gz
+*.cbor
+protocol-params.json
+deployment-result.json
+plutus-script.json
+limit-order-protocol-cardano/share
+
 # Documentation build
 docs/_build/
 
