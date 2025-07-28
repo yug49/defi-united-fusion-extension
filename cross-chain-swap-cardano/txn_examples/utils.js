@@ -41,7 +41,9 @@ class CardanoSwapUtils {
      * Generate hash of secret (compatible with Cardano)
      */
     hashSecret(secret) {
-        return crypto.createHash('sha256').update(secret, 'hex').digest('hex');
+        // If secret is already hex (64 chars), use it as hex, otherwise treat as utf8
+        const encoding = (secret.length === 64 && /^[0-9a-fA-F]+$/.test(secret)) ? 'hex' : 'utf8';
+        return crypto.createHash('sha256').update(secret, encoding).digest('hex');
     }
     
     /**
