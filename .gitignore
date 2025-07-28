@@ -37,7 +37,6 @@ artifacts/
 typechain/
 typechain-types/
 .openzeppelin/
-deployments/
 broadcast/
 
 # Solidity compilation artifacts
