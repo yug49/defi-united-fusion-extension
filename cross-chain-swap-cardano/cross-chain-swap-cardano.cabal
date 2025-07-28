@@ -70,6 +70,19 @@ library
     default-language: Haskell2010
     ghc-options:      -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
 
+executable cross-chain-swap-cardano
+    import:           warnings
+    main-is:          Main.hs
+    hs-source-dirs:   app
+    default-language: Haskell2010
+    build-depends:    base ^>=4.18.3.0
+                    , cross-chain-swap-cardano
+                    , time
+                    , containers
+                    , bytestring
+                    , cryptohash-sha256
+    ghc-options:      -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
+
 test-suite cross-chain-swap-test
     import:           warnings
     default-language: Haskell2010

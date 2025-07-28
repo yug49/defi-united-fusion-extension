@@ -1,0 +1,30 @@
+{
+  "name": "cross-chain-swap-cardano",
+  "version": "1.0.0",
+  "description": "Cross-chain swap contracts for Cardano blockchain - atomic swaps with Ethereum",
+  "main": "app/Main.hs",
+  "scripts": {
+    "test": "cabal test",
+    "build": "cabal build",
+    "clean": "cabal clean",
+    "deploy": "node scripts/deploy.js",
+    "build-and-deploy": "./scripts/build-and-deploy.sh"
+  },
+  "keywords": [
+    "cardano",
+    "cross-chain",
+    "atomic-swap",
+    "escrow",
+    "defi",
+    "blockchain"
+  ],
+  "author": "Yug Agarwal",
+  "license": "MIT",
+  "dependencies": {
+    "@blockfrost/blockfrost-js": "^5.4.0",
+    "bip39": "^3.1.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.3.1"
+  }
+}
