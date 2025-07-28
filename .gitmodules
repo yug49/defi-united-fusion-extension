@@ -14,3 +14,6 @@
 	path = limit-order-protocol
 	url = https://github.com/yug49/limit-order-protocol.git
 
+[submodule "cross-chain-sdk"]
+	path = cross-chain-sdk
+	url = https://github.com/1inch/cross-chain-sdk
