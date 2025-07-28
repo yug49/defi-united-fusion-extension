@@ -1,0 +1,24 @@
+{
+  "name": "limit-order-protocol-cardano",
+  "version": "1.0.0",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "cabal test",
+    "build": "cabal build",
+    "clean": "cabal clean",
+    "deploy": "node scripts/deploy.js",
+    "wallet": "node scripts/cardano-wallet.js",
+    "full-deploy": "./scripts/build-and-deploy.sh"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@emurgo/cardano-serialization-lib-nodejs": "^15.0.0",
+    "bech32": "^2.0.0"
+  }
+}
