@@ -106,10 +106,16 @@ protocol-params.json
 deployment-result.json
 plutus-script.json
 limit-order-protocol-cardano/share
+cross-chain-swap-cardano/dst-escrow-deployment.json
+cross-chain-swap-cardano/src-escrow-deployment.json
+cross-chain-swap-cardano/txn_examples/src-escrow-deployment.json
+cross-chain-swap-cardano/txn_examples/dst-escrow-deployment.json
+
 
 # Documentation build
 docs/_build/
 
 # Folders
 resolver_implementation/
+
 
